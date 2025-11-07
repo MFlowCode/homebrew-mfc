@@ -20,11 +20,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: Homebrew/actions/setup-homebrew@master
+
       - name: Build/test (PR)
         if: github.event_name == 'pull_request'
-        run: brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc
-      - name: Publish bottles (main)
+        run: |
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --formula=mfc
+
+      - name: Build, bottle, and publish (main)
         if: github.event_name == 'push'
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc --publish
+        run: |
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --formula=mfc --publish
