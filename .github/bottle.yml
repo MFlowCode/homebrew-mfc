@@ -1,0 +1,30 @@
+name: Bottle
+
+on:
+  pull_request:
+    paths: ['Formula/*.rb']
+  push:
+    branches: [ main ]
+    paths: ['Formula/*.rb']
+
+permissions:
+  contents: write
+
+jobs:
+  test-bot:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-13]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Build/test (PR)
+        if: github.event_name == 'pull_request'
+        run: brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc
+      - name: Publish bottles (main)
+        if: github.event_name == 'push'
+        env:
+          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc --publish
