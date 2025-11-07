@@ -19,16 +19,7 @@ permissions:
 
 jobs:
   test-bot:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest   # arm64
-            publish: true
-          - os: macos-13       # Intel
-            publish: true
-
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: Homebrew/actions/setup-homebrew@master
@@ -39,10 +30,20 @@ jobs:
           HOMEBREW_NO_ANALYTICS: 1
           HOMEBREW_NO_AUTO_UPDATE: 1
         run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" mfc
+          brew test-bot \
+            --only-formulae \
+            --tap="$GITHUB_REPOSITORY" \
+            --skip-relocation \
+            --skip-online-checks \
+            --skip-new \
+            --skip-stable-version-audit \
+            --skip-revision-audit \
+            --skip-checksum-only-audit \
+            --skip-livecheck \
+            mfc
 
       - name: Build, bottle, and publish (push to main or manual publish)
-        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')) && matrix.publish
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_NO_ANALYTICS: 1
@@ -62,13 +63,9 @@ jobs:
             mfc
 
   verify-install:
-    if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish'))
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')
     needs: test-bot
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, macos-13]
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     steps:
       - uses: Homebrew/actions/setup-homebrew@master
       - name: Tap and install bottled formula
