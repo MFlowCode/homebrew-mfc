@@ -26,6 +26,9 @@ jobs:
         include:
           - os: macos-latest   # arm64
             publish: true
+          - os: macos-13       # Intel
+            publish: true
+
     steps:
       - uses: actions/checkout@v4
       - uses: Homebrew/actions/setup-homebrew@master
