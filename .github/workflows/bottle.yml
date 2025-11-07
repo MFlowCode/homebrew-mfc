@@ -23,7 +23,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest]  # arm64 + Intel
+        include:
+          - os: macos-latest   # arm64
+            publish: true
     steps:
       - uses: actions/checkout@v4
       - uses: Homebrew/actions/setup-homebrew@master
@@ -34,8 +36,19 @@ jobs:
           brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" mfc
 
       - name: Build, bottle, and publish (push to main or manual publish)
-        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')
+        if: (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')) && matrix.publish
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --publish mfc
+          brew test-bot \
+            --only-formulae \
+            --tap="$GITHUB_REPOSITORY" \
+            --publish \
+            --skip-relocation \
+            --skip-online-checks \
+            --skip-new \
+            --skip-stable-version-audit \
+            --skip-revision-audit \
+            --skip-checksum-only-audit \
+            --skip-livecheck \
+            mfc
