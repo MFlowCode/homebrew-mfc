@@ -6,6 +6,13 @@ on:
   push:
     branches: [ main ]
     paths: ['Formula/*.rb']
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Run mode'
+        type: choice
+        options: [test, publish]
+        default: test
 
 permissions:
   contents: write
@@ -16,19 +23,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-14, macos-13]
+        os: [macos-latest, macos-15-intel]  # arm64 + Intel
     steps:
       - uses: actions/checkout@v4
       - uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Build/test (PR)
-        if: github.event_name == 'pull_request'
+      - name: Build/test (PR or manual test)
+        if: github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'test')
         run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --formula=mfc
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" mfc
 
-      - name: Build, bottle, and publish (main)
-        if: github.event_name == 'push'
+      - name: Build, bottle, and publish (push to main or manual publish)
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.mode == 'publish')
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --formula=mfc --publish
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --publish mfc
