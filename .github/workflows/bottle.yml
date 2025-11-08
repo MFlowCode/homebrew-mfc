@@ -27,21 +27,24 @@ jobs:
       - name: Build and test (PR)
         if: github.event_name == 'pull_request'
         run: |
-          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc
+          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY mfc
       
       - name: Build, bottle, and publish (push to main)
         if: github.event_name == 'push'
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --formula=mfc --publish
+          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --publish mfc
       
       - name: Cleanup tap symlink
         if: always()
         run: |
           # Remove the tap symlink/directory that setup-homebrew creates
-          brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
-          rm -rf "/opt/homebrew/Library/Taps/${GITHUB_REPOSITORY/\//-}" 2>/dev/null || true
+          # The setup-homebrew action creates a symlink that its cleanup script can't handle
+          if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
+            brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
+            rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
+          fi
 
   verify-install:
     runs-on: macos-latest
@@ -68,5 +71,7 @@ jobs:
         if: always()
         run: |
           # Properly cleanup the tap to avoid post-job errors
-          brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
-          rm -rf "/opt/homebrew/Library/Taps/${GITHUB_REPOSITORY/\//-}" 2>/dev/null || true
+          if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
+            brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
+            rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
+          fi
