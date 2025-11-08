@@ -8,6 +8,12 @@ on:
     branches: [ main ]
     paths:
       - 'Formula/*.rb'
+  workflow_dispatch:
+    inputs:
+      formula:
+        description: 'Formula to test (default: mfc)'
+        required: false
+        default: 'mfc'
 
 permissions:
   contents: write
