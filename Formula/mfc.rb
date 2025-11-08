@@ -71,61 +71,90 @@ class Mfc < Formula
     # Create smart wrapper script that:
     # 1. Works around read-only Cellar issue by using a temp working dir
     # 2. Uses the persistent var-based venv (no copy needed)
-    # 3. Ensures mfc.sh doesn't reinstall packages by copying pyproject.toml
+    # 3. Minimal copying - only what needs to be writable
+    # 4. Resolves input file paths before changing directories
     (bin/"mfc").write <<~EOS
-      #!/bin/bash
-      set -euo pipefail
+        #!/bin/bash
+        set -euo pipefail
 
-      # Unset VIRTUAL_ENV to ensure mfc.sh uses our configured venv
-      unset VIRTUAL_ENV || true
+        # Unset VIRTUAL_ENV to ensure mfc.sh uses our configured venv
+        unset VIRTUAL_ENV || true
 
-      # Create a temporary working directory (Cellar is read-only)
-      TMPDIR="$(mktemp -d)"
-      trap 'rm -rf "${TMPDIR}"' EXIT
+        # Save original working directory
+        ORIG_DIR="$(pwd)"
 
-      # Copy mfc.sh to temp dir (it may try to write build artifacts)
-      cp "#{libexec}/mfc.sh" "${TMPDIR}/"
-      cd "${TMPDIR}"
+        # Process arguments and convert relative paths to absolute paths
+        ARGS=()
+        for arg in "$@"; do
+          # If argument looks like a file path and exists as relative path
+          if [[ "$arg" =~ \\.(py|txt|json|yaml|yml)$ ]] && [ -e "${ORIG_DIR}/${arg}" ]; then
+            ARGS+=("${ORIG_DIR}/${arg}")
+          else
+            ARGS+=("$arg")
+          fi
+        done
 
-      # Copy toolchain directory (not symlink) so Python paths resolve correctly
-      # This prevents paths from resolving back to read-only Cellar
-      cp -R "#{prefix}/toolchain" "toolchain"
+        # Create a temporary working directory (Cellar is read-only)
+        TMPDIR="$(mktemp -d)"
+        trap 'rm -rf "${TMPDIR}"' EXIT
+        cd "${TMPDIR}"
 
-      # Patch toolchain to use Homebrew-installed binaries
-      # Replace get_install_binpath to return Homebrew bin directory
-      cat >> "toolchain/mfc/build.py" << 'PATCH_EOF'
+        # Copy only mfc.sh (small, fast)
+        cp "#{libexec}/mfc.sh" .
 
-      # Homebrew patch: Override get_install_binpath to use pre-installed binaries
+        # Create a minimal CMakeLists.txt to prevent the cat error
+        # mfc.sh reads this to get version info
+        cat > CMakeLists.txt << 'CMAKE_EOF'
+      cmake_minimum_required(VERSION 3.18)
+      project(MFC VERSION #{version})
+      CMAKE_EOF
+
+        # Symlink toolchain (read-only is fine, no copy needed)
+        ln -s "#{prefix}/toolchain" toolchain
+
+        # Symlink examples (read-only is fine)
+        ln -s "#{prefix}/examples" examples
+
+        # Create build directory structure
+        mkdir -p build
+
+        # Symlink the persistent venv (no copy)
+        ln -s "#{var}/mfc/venv" build/venv
+
+        # Copy only pyproject.toml (tiny file, prevents reinstall checks)
+        cp "#{prefix}/toolchain/pyproject.toml" build/pyproject.toml
+
+        # Create a minimal patch file for build.py overrides
+        mkdir -p .mfc_patch
+        cat > .mfc_patch/build_patch.py << 'PATCH_EOF'
+      import sys
+      sys.path.insert(0, "#{prefix}/toolchain")
+      from mfc.build import MFCTarget
+
+      # Override get_install_binpath to use pre-installed binaries
       _original_get_install_binpath = MFCTarget.get_install_binpath
       def _homebrew_get_install_binpath(self, case):
           return "#{bin}/" + self.name
       MFCTarget.get_install_binpath = _homebrew_get_install_binpath
 
-      # Override is_buildable to skip building main targets and syscheck
+      # Override is_buildable to skip building main targets
       _original_is_buildable = MFCTarget.is_buildable
       def _homebrew_is_buildable(self):
           if self.name in ["pre_process", "simulation", "post_process", "syscheck"]:
-              return False  # Skip building - use pre-installed binaries
+              return False
           return _original_is_buildable(self)
       MFCTarget.is_buildable = _homebrew_is_buildable
       PATCH_EOF
 
-      # Copy examples directory (required by mfc.sh Python code)
-      cp -R "#{prefix}/examples" "examples"
+        # Set PYTHONPATH to load our patch before running mfc.sh
+        export PYTHONPATH="${TMPDIR}/.mfc_patch:#{prefix}/toolchain:${PYTHONPATH:-}"
 
-      # Create build directory and symlink the persistent venv
-      mkdir -p "build"
-      ln -s "#{var}/mfc/venv" "build/venv"
-
-      # Copy pyproject.toml so mfc.sh thinks dependencies are already installed
-      cp "#{prefix}/toolchain/pyproject.toml" "build/pyproject.toml"
-
-      # For 'mfc run', add --no-build flag to skip compilation
-      if [ "${1-}" = "run" ]; then
-        exec ./mfc.sh "$@" --no-build
-      else
-        exec ./mfc.sh "$@"
-      fi
+        # For 'mfc run', add --no-build flag to skip compilation
+        if [ "${1-}" = "run" ]; then
+          exec ./mfc.sh "${ARGS[@]}" --no-build
+        else
+          exec ./mfc.sh "${ARGS[@]}"
+        fi
     EOS
     (bin/"mfc").chmod 0755
   end
@@ -175,5 +204,23 @@ class Mfc < Formula
 
     # Test that mfc wrapper works
     system bin/"mfc", "--help"
+
+    # Test running a simple 1D Sod shock tube case from a separate directory
+    # This ensures the wrapper script correctly handles relative paths
+    testpath_case = testpath/"test_run"
+    testpath_case.mkpath
+
+    # Copy case.py from examples to an independent test directory
+    cp prefix/"examples/1D_sodshocktube/case.py", testpath_case/"case.py"
+
+    # Run the case from the test directory (this will execute pre_process and simulation)
+    # Limit to 1 processor and reduce runtime for testing
+    cd testpath_case do
+      system bin/"mfc", "run", "case.py", "-j", "1"
+    end
+
+    # Verify output files were created in the test directory
+    assert_path_exists testpath_case/"silo_hdf5"
+    assert_predicate testpath_case/"silo_hdf5", :directory?
   end
 end
