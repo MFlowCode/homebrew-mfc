@@ -20,7 +20,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@v4
+        with:
+          core: true
+          stable: true
 
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -68,7 +71,10 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@v4
+        with:
+          core: true
+          stable: true
 
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -100,7 +106,10 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@v4
+        with:
+          core: true
+          stable: true
 
       - name: Checkout tap
         uses: actions/checkout@v4
