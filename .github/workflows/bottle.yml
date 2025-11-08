@@ -20,7 +20,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@v4
+        uses: Homebrew/actions/setup-homebrew@v1
         with:
           core: true
           stable: true
@@ -71,7 +71,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@v4
+        uses: Homebrew/actions/setup-homebrew@v1
         with:
           core: true
           stable: true
@@ -106,7 +106,7 @@ jobs:
     runs-on: macos-14
     steps:
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@v4
+        uses: Homebrew/actions/setup-homebrew@v1
         with:
           core: true
           stable: true
