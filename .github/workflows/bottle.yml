@@ -58,18 +58,13 @@ jobs:
         continue-on-error: true
         run: |
           # Remove the tap symlink/directory that setup-homebrew creates
-          # The setup-homebrew action creates a symlink that its cleanup script can't handle
           if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
             brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
             rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
           fi
-          # Touch a marker file so post-cleanup knows we handled it
-          mkdir -p /tmp
-          touch /tmp/homebrew-tap-cleaned
 
   verify-install:
     runs-on: macos-latest
-    if: github.event_name != 'workflow_dispatch'  # Skip for manual runs
     
     steps:
       - name: Checkout repository
@@ -95,7 +90,6 @@ jobs:
         if: always()
         continue-on-error: true
         run: |
-          # Properly cleanup the tap to avoid post-job errors
           if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
             brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
             rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
