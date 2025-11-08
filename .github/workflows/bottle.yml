@@ -22,11 +22,7 @@ permissions:
 
 jobs:
   test-bot:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-14, macos-13]
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
 
