@@ -40,7 +40,7 @@ jobs:
       - name: Build and test only (PR or workflow_dispatch)
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: |
-          brew install --build-from-source ./Formula/mfc.rb
+          brew install --build-from-source mflowcode/mfc/mfc
           brew test mfc
 
       - name: Upload bottles as artifact
@@ -69,7 +69,7 @@ jobs:
 
       - name: Install MFC
         run: |
-          brew install --build-from-source ./Formula/mfc.rb
+          brew install --build-from-source mflowcode/mfc/mfc
 
       - name: Run Sod shock tube test case
         run: |
@@ -101,7 +101,7 @@ jobs:
 
       - name: Install MFC
         run: |
-          brew install --build-from-source ./Formula/mfc.rb
+          brew install --build-from-source mflowcode/mfc/mfc
 
       - name: Verify installation
         run: |
