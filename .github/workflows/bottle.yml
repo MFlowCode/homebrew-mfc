@@ -4,10 +4,12 @@ on:
   pull_request:
     paths:
       - 'Formula/*.rb'
+      - '.github/workflows/bottle.yml'
   push:
     branches: [ main ]
     paths:
       - 'Formula/*.rb'
+      - '.github/workflows/bottle.yml'
   workflow_dispatch:
     inputs:
       formula:
@@ -27,54 +29,41 @@ jobs:
         os: [macos-14, macos-13]
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
         with:
           test-bot: false
-      
+
       - name: Build and test (PR)
         if: github.event_name == 'pull_request'
         run: |
-          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY mfc
-      
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" mfc
+
       - name: Build and test (manual dispatch)
         if: github.event_name == 'workflow_dispatch'
         run: |
           FORMULA="${{ github.event.inputs.formula }}"
-          if [ -z "$FORMULA" ]; then FORMULA="mfc"; fi
-          echo "Testing formula: $FORMULA"
-          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY $FORMULA
-      
+          [ -z "$FORMULA" ] && FORMULA="mfc"
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" "$FORMULA"
+
       - name: Build, bottle, and publish (push to main)
         if: github.event_name == 'push'
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY --publish mfc
-      
-      - name: Cleanup tap symlink
-        if: always()
-        continue-on-error: true
-        run: |
-          # Remove the tap symlink/directory that setup-homebrew creates
-          if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
-            brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
-            rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
-          fi
+          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --publish mfc
 
   verify-install:
     runs-on: macos-latest
-    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-        with:
-          test-bot: false
-      
+      - uses: actions/checkout@v4
+
+      # Use system Homebrew; no setup-homebrew action here to avoid its post-cleanup.
+      - name: Update Homebrew
+        run: |
+          brew update
+
       - name: Tap and install
         run: |
           brew untap "$GITHUB_REPOSITORY" || true
@@ -85,12 +74,10 @@ jobs:
             echo "Retrying in 20s (attempt $i/6) ..." && sleep 20
           done
           brew test MFlowCode/mfc/mfc || mfc --help
-      
-      - name: Cleanup tap
+
+      - name: Cleanup tap (local)
         if: always()
         continue-on-error: true
         run: |
-          if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
-            brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
-            rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
-          fi
+          brew untap "$GITHUB_REPOSITORY" || true
+          rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" || true
