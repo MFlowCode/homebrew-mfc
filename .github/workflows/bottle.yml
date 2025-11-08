@@ -1,79 +1,147 @@
 name: Bottle
 
 on:
-  pull_request:
-    paths:
-      - 'Formula/*.rb'
-      - '.github/workflows/bottle.yml'
   push:
-    branches: [ main ]
+    branches:
+      - main
     paths:
-      - 'Formula/*.rb'
+      - 'Formula/**'
       - '.github/workflows/bottle.yml'
   workflow_dispatch:
-    inputs:
-      formula:
-        description: 'Formula to test (default: mfc)'
-        required: false
-        default: 'mfc'
 
 permissions:
   contents: write
 
 jobs:
   test-bot:
-    runs-on: macos-latest
+    strategy:
+      matrix:
+        os: [macos-14]
+    runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@v4
         with:
-          test-bot: false
+          core: true
+          stable: true
 
-      - name: Build and test (PR)
-        if: github.event_name == 'pull_request'
-        run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" mfc
+      - name: Checkout tap
+        uses: actions/checkout@v4
 
-      - name: Build and test (manual dispatch)
-        if: github.event_name == 'workflow_dispatch'
+      - name: Set variables
+        id: set_vars
         run: |
-          FORMULA="${{ github.event.inputs.formula }}"
-          [ -z "$FORMULA" ] && FORMULA="mfc"
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" "$FORMULA"
+          echo "root_url=https://github.com/${{ github.repository }}/releases/download/bottles" >> $GITHUB_OUTPUT
 
       - name: Build, bottle, and publish (push to main)
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --tap="$GITHUB_REPOSITORY" --publish mfc
+          brew test-bot --only-formulae --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
 
-  verify-install:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      # Use system Homebrew; no setup-homebrew action here to avoid its post-cleanup.
-      - name: Update Homebrew
+      - name: Build and test only (PR or workflow_dispatch)
+        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
         run: |
-          brew update
+          brew install --build-from-source ./Formula/mfc.rb
+          brew test mfc
 
-      - name: Tap and install
-        run: |
-          brew untap "$GITHUB_REPOSITORY" || true
-          brew tap "$GITHUB_REPOSITORY"
-          brew uninstall --force mfc || true
-          for i in {1..6}; do
-            if brew install MFlowCode/mfc/mfc; then break; fi
-            echo "Retrying in 20s (attempt $i/6) ..." && sleep 20
-          done
-          brew test MFlowCode/mfc/mfc || mfc --help
+      - name: Upload bottles as artifact
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles-${{ matrix.os }}
+          path: '*.bottle.*'
+          if-no-files-found: ignore
 
-      - name: Cleanup tap (local)
+      - name: Cleanup
         if: always()
         continue-on-error: true
         run: |
-          brew untap "$GITHUB_REPOSITORY" || true
-          rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" || true
+          brew uninstall --force mfc || true
+          if brew tap | grep -q mflowcode/test; then
+            brew untap mflowcode/test || true
+          fi
+          if [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
+            rm -rf /opt/homebrew/Library/Taps/mflowcode/homebrew-mfc || true
+          fi
+
+  test-run-case:
+    needs: test-bot
+    runs-on: macos-14
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@v4
+        with:
+          core: true
+          stable: true
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Install MFC
+        run: |
+          brew install --build-from-source ./Formula/mfc.rb
+
+      - name: Run Sod shock tube test case
+        run: |
+          mkdir -p ~/test_mfc_case
+          cd ~/test_mfc_case
+          cp $(brew --prefix mfc)/examples/1D_sodshocktube/case.py .
+          mfc run case.py -j 1
+
+      - name: Verify output
+        run: |
+          test -d ~/test_mfc_case/silo_hdf5
+          echo "✅ Test case ran successfully and produced output"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          brew uninstall --force mfc || true
+          rm -rf ~/test_mfc_case
+
+  verify-install:
+    needs: test-run-case
+    runs-on: macos-14
+    steps:
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@v4
+        with:
+          core: true
+          stable: true
+
+      - name: Checkout tap
+        uses: actions/checkout@v4
+
+      - name: Install MFC
+        run: |
+          brew install --build-from-source ./Formula/mfc.rb
+
+      - name: Verify installation
+        run: |
+          echo "1. Checking binaries..."
+          test -x $(brew --prefix mfc)/bin/pre_process
+          test -x $(brew --prefix mfc)/bin/simulation
+          test -x $(brew --prefix mfc)/bin/post_process
+          test -x $(brew --prefix mfc)/bin/mfc
+          
+          echo "2. Checking toolchain..."
+          test -d $(brew --prefix mfc)/toolchain
+          
+          echo "3. Checking Python venv..."
+          test -d $(brew --prefix mfc)/libexec/venv
+          test -x $(brew --prefix mfc)/libexec/venv/bin/python
+          
+          echo "4. Checking examples..."
+          test -d $(brew --prefix mfc)/examples
+          
+          echo "5. Testing mfc command..."
+          mfc --help
+          
+          echo "✅ All verification checks passed"
+
+      - name: Cleanup
+        if: always()
+        run: |
+          brew uninstall --force mfc || true
