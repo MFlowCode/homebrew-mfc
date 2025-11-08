@@ -35,7 +35,7 @@ jobs:
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --skip-style --no-audit --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
+          brew test-bot --only-formulae --skip-dependents --skip-online-checks --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
 
       - name: Build and test only (PR or workflow_dispatch)
         if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
@@ -56,12 +56,6 @@ jobs:
         continue-on-error: true
         run: |
           brew uninstall --force mfc || true
-          if brew tap | grep -q mflowcode/test; then
-            brew untap mflowcode/test || true
-          fi
-          if [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
-            rm -rf /opt/homebrew/Library/Taps/mflowcode/homebrew-mfc || true
-          fi
 
   test-run-case:
     needs: test-bot
@@ -116,20 +110,15 @@ jobs:
           test -x $(brew --prefix mfc)/bin/simulation
           test -x $(brew --prefix mfc)/bin/post_process
           test -x $(brew --prefix mfc)/bin/mfc
-          
           echo "2. Checking toolchain..."
           test -d $(brew --prefix mfc)/toolchain
-          
           echo "3. Checking Python venv..."
           test -d $(brew --prefix mfc)/libexec/venv
           test -x $(brew --prefix mfc)/libexec/venv/bin/python
-          
           echo "4. Checking examples..."
           test -d $(brew --prefix mfc)/examples
-          
           echo "5. Testing mfc command..."
           mfc --help
-          
           echo "✅ All verification checks passed"
 
       - name: Cleanup
