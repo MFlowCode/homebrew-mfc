@@ -28,12 +28,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      - uses: Homebrew/actions/setup-homebrew@master
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+        with:
+          test-bot: false
       
       - name: Build and test (PR)
         if: github.event_name == 'pull_request'
         run: |
           brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY mfc
+      
+      - name: Build and test (manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          FORMULA="${{ github.event.inputs.formula }}"
+          if [ -z "$FORMULA" ]; then FORMULA="mfc"; fi
+          echo "Testing formula: $FORMULA"
+          brew test-bot --only-formulae --tap=$GITHUB_REPOSITORY $FORMULA
       
       - name: Build, bottle, and publish (push to main)
         if: github.event_name == 'push'
@@ -44,6 +55,7 @@ jobs:
       
       - name: Cleanup tap symlink
         if: always()
+        continue-on-error: true
         run: |
           # Remove the tap symlink/directory that setup-homebrew creates
           # The setup-homebrew action creates a symlink that its cleanup script can't handle
@@ -51,9 +63,13 @@ jobs:
             brew untap "$GITHUB_REPOSITORY" 2>/dev/null || true
             rm -rf "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" 2>/dev/null || true
           fi
+          # Touch a marker file so post-cleanup knows we handled it
+          mkdir -p /tmp
+          touch /tmp/homebrew-tap-cleaned
 
   verify-install:
     runs-on: macos-latest
+    if: github.event_name != 'workflow_dispatch'  # Skip for manual runs
     
     steps:
       - name: Checkout repository
@@ -61,6 +77,8 @@ jobs:
       
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
+        with:
+          test-bot: false
       
       - name: Tap and install
         run: |
@@ -75,6 +93,7 @@ jobs:
       
       - name: Cleanup tap
         if: always()
+        continue-on-error: true
         run: |
           # Properly cleanup the tap to avoid post-job errors
           if [ -L "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ] || [ -d "/opt/homebrew/Library/Taps/mflowcode/homebrew-mfc" ]; then
