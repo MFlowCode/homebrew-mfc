@@ -16,7 +16,7 @@ jobs:
   test-bot:
     strategy:
       matrix:
-        os: [macos-14]
+        os: [macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Homebrew
@@ -30,21 +30,14 @@ jobs:
         run: |
           echo "root_url=https://github.com/${{ github.repository }}/releases/download/bottles" >> $GITHUB_OUTPUT
 
-      - name: Build, bottle, and publish (push to main)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      - name: Build bottles with test-bot
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           brew test-bot --only-formulae --skip-dependents --skip-online-checks --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
 
-      - name: Build and test only (PR or workflow_dispatch)
-        if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-        run: |
-          brew install --build-from-source mflowcode/mfc/mfc
-          brew test mfc
-
       - name: Upload bottles as artifact
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: bottles-${{ matrix.os }}
@@ -67,9 +60,12 @@ jobs:
       - name: Checkout tap
         uses: actions/checkout@v4
 
-      - name: Install MFC
+      - name: Install MFC from bottle
         run: |
-          brew install --build-from-source mflowcode/mfc/mfc
+          # Wait a moment for bottle to be available
+          sleep 5
+          # Install the formula (will use bottle if available)
+          brew install mflowcode/mfc/mfc || brew install --build-from-source mflowcode/mfc/mfc
 
       - name: Run Sod shock tube test case
         run: |
@@ -101,7 +97,7 @@ jobs:
 
       - name: Install MFC
         run: |
-          brew install --build-from-source mflowcode/mfc/mfc
+          brew install mflowcode/mfc/mfc || brew install --build-from-source mflowcode/mfc/mfc
 
       - name: Verify installation
         run: |
@@ -125,3 +121,4 @@ jobs:
         if: always()
         run: |
           brew uninstall --force mfc || true
+
