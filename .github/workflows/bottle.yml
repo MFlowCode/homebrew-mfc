@@ -142,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Extract URL from the formula
+          # Extract URL from the formula (e.g. .../v5.1.0.tar.gz)
           URL=$(grep -E 'url "https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' Formula/mfc.rb \
             | sed -E 's/.*url "([^"]+)".*/\1/')
 
