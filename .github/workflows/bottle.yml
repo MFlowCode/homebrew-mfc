@@ -16,7 +16,7 @@ jobs:
   test-bot:
     strategy:
       matrix:
-        os: [macos-latest]
+        os: [macos-14,macos-15,macos-26]
     runs-on: ${{ matrix.os }}
     steps:
       - name: Set up Homebrew
@@ -28,19 +28,20 @@ jobs:
       - name: Set variables
         id: set_vars
         run: |
-          echo "root_url=https://github.com/${{ github.repository }}/releases/download/bottles" >> $GITHUB_OUTPUT
+          echo "root_url=https://github.com/${{ github.repository }}/releases/download/bottles" >> "$GITHUB_OUTPUT"
 
       - name: Build bottles with test-bot
         env:
           HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          brew test-bot --only-formulae --skip-dependents --skip-online-checks --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
+          brew test-bot --only-formulae --skip-dependents --skip-online-checks \
+            --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
 
       - name: Upload bottles as artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: bottles-${{ matrix.os }}
+          name: bottles-test-bot-${{ matrix.os }}
           path: '*.bottle.*'
           if-no-files-found: ignore
 
@@ -62,7 +63,7 @@ jobs:
 
       - name: Install MFC from bottle
         run: |
-          # Wait a moment for bottle to be available
+          # Wait a moment for the bottle to be available
           sleep 5
           # Install the formula (will use bottle if available)
           brew install mflowcode/mfc/mfc || brew install --build-from-source mflowcode/mfc/mfc
@@ -71,7 +72,7 @@ jobs:
         run: |
           mkdir -p ~/test_mfc_case
           cd ~/test_mfc_case
-          cp $(brew --prefix mfc)/examples/1D_sodshocktube/case.py .
+          cp "$(brew --prefix mfc)/examples/1D_sodshocktube/case.py" .
           mfc case.py -j 1
 
       - name: Verify output
@@ -102,17 +103,17 @@ jobs:
       - name: Verify installation
         run: |
           echo "1. Checking binaries..."
-          test -x $(brew --prefix mfc)/bin/pre_process
-          test -x $(brew --prefix mfc)/bin/simulation
-          test -x $(brew --prefix mfc)/bin/post_process
-          test -x $(brew --prefix mfc)/bin/mfc
+          test -x "$(brew --prefix mfc)/bin/pre_process"
+          test -x "$(brew --prefix mfc)/bin/simulation"
+          test -x "$(brew --prefix mfc)/bin/post_process"
+          test -x "$(brew --prefix mfc)/bin/mfc"
           echo "2. Checking toolchain..."
-          test -d $(brew --prefix mfc)/toolchain
+          test -d "$(brew --prefix mfc)/toolchain"
           echo "3. Checking Python venv..."
-          test -d $(brew --prefix mfc)/libexec/venv
-          test -x $(brew --prefix mfc)/libexec/venv/bin/python
+          test -d "$(brew --prefix mfc)/libexec/venv"
+          test -x "$(brew --prefix mfc)/libexec/venv/bin/python"
           echo "4. Checking examples..."
-          test -d $(brew --prefix mfc)/examples
+          test -d "$(brew --prefix mfc)/examples"
           echo "5. Testing mfc command..."
           mfc --help
           echo "✅ All verification checks passed"
@@ -122,11 +123,13 @@ jobs:
         run: |
           brew uninstall --force mfc || true
 
-
   build-bottle:
-    name: Build and publish bottles
-    needs: verify-install    # <- only runs if all tests pass
-    runs-on: macos-14
+    name: Build bottles (per macOS)
+    needs: verify-install
+    strategy:
+      matrix:
+        os: [macos-14, macos-15, macos-26]   # Add more macOS versions here if needed
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout tap
@@ -194,16 +197,67 @@ jobs:
           brew bottle --root-url="${{ steps.meta.outputs.root_url }}" --json mfc
           ls -1 *.bottle.*
 
-      - name: Merge bottle into formula
+      - name: Upload bottle artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: bottles-${{ matrix.os }}
+          path: |
+            *.bottle.*
+
+  merge-bottles:
+    name: Merge bottles and update formula
+    needs: build-bottle
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Determine version and root URL
+        id: meta
         run: |
           set -euo pipefail
 
-          # Expect JSON metadata from `brew bottle --json`
-          JSON_BOTTLES=(*.bottle*.json)
+          URL=$(grep -E 'url "https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' Formula/mfc.rb \
+            | sed -E 's/.*url "([^"]+)".*/\1/')
+          if [[ -z "${URL}" ]]; then
+            echo "Could not extract URL from Formula/mfc.rb" >&2
+            exit 1
+          fi
 
+          VERSION=$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')
+          if [[ -z "${VERSION}" ]]; then
+            echo "Could not parse version from URL: ${URL}" >&2
+            exit 1
+          fi
+
+          TAG="mfc-${VERSION}"
+          ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Download all bottle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bottles
+
+      - name: Merge bottle metadata into formula
+        run: |
+          set -euo pipefail
+          cd bottles
+
+          # Collect all JSON metadata files from all OSes
+          JSON_BOTTLES=(*.bottle*.json)
           if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
             echo "No bottle metadata (*.bottle*.json) found; cannot merge bottle into Formula/mfc.rb"
-            ls -1
+            ls -R
             exit 1
           fi
 
@@ -235,6 +289,6 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           files: |
-            *.bottle.*
+            bottles/*.bottle.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
