@@ -169,7 +169,8 @@ jobs:
       - name: Install formula with --build-bottle
         run: |
           set -euo pipefail
-          brew install --build-bottle ./Formula/mfc.rb
+          # Install the tap formula by name, now that the tap is linked
+          brew install --build-bottle mflowcode/mfc/mfc
 
       - name: Build bottle
         run: |
