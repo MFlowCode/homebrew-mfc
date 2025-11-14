@@ -190,19 +190,24 @@ jobs:
       - name: Build bottle
         run: |
           set -euo pipefail
-          brew bottle --root-url="${{ steps.meta.outputs.root_url }}" mfc
+          # Build bottle and emit JSON metadata for merge step
+          brew bottle --root-url="${{ steps.meta.outputs.root_url }}" --json mfc
           ls -1 *.bottle.*
 
       - name: Merge bottle into formula
         run: |
           set -euo pipefail
+
+          # Expect JSON metadata from `brew bottle --json`
           JSON_BOTTLES=(*.bottle*.json)
-          if [[ -e "${JSON_BOTTLES[0]}" ]]; then
-            brew bottle --merge --write "${JSON_BOTTLES[@]}"
-          else
-            RB_BOTTLES=(*.bottle*.rb)
-            brew bottle --merge --write "${RB_BOTTLES[@]}"
+
+          if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
+            echo "No bottle metadata (*.bottle*.json) found; cannot merge bottle into Formula/mfc.rb"
+            ls -1
+            exit 1
           fi
+
+          brew bottle --merge --write "${JSON_BOTTLES[@]}"
 
       - name: Commit updated bottle block
         run: |
