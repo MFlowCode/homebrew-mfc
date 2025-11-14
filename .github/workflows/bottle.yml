@@ -141,9 +141,27 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-          VERSION=$(grep -E 'version "[0-9]+\.[0-9]+\.[0-9]+"' Formula/mfc.rb | sed -E 's/.*version "([^"]+)".*/\1/')
+
+          # Extract URL from the formula
+          URL=$(grep -E 'url "https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' Formula/mfc.rb \
+            | sed -E 's/.*url "([^"]+)".*/\1/')
+
+          if [[ -z "${URL}" ]]; then
+            echo "Could not extract URL from Formula/mfc.rb" >&2
+            exit 1
+          fi
+
+          # Parse version from the URL (…/vX.Y.Z.tar.gz)
+          VERSION=$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')
+
+          if [[ -z "${VERSION}" ]]; then
+            echo "Could not parse version from URL: ${URL}" >&2
+            exit 1
+          fi
+
           TAG="mfc-${VERSION}"
           ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
