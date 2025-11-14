@@ -122,3 +122,80 @@ jobs:
         run: |
           brew uninstall --force mfc || true
 
+
+  build-bottle:
+    name: Build and publish bottles
+    needs: verify-install    # <- only runs if all tests pass
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout tap
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Determine version and root URL
+        id: meta
+        run: |
+          set -euo pipefail
+          VERSION=$(grep -E 'version "[0-9]+\.[0-9]+\.[0-9]+"' Formula/mfc.rb | sed -E 's/.*version "([^"]+)".*/\1/')
+          TAG="mfc-${VERSION}"
+          ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Install formula with --build-bottle
+        run: |
+          set -euo pipefail
+          brew install --build-bottle ./Formula/mfc.rb
+
+      - name: Build bottle
+        run: |
+          set -euo pipefail
+          brew bottle --root-url="${{ steps.meta.outputs.root_url }}" mfc
+          ls -1 *.bottle.*
+
+      - name: Merge bottle into formula
+        run: |
+          set -euo pipefail
+          JSON_BOTTLES=(*.bottle*.json)
+          if [[ -e "${JSON_BOTTLES[0]}" ]]; then
+            brew bottle --merge --write "${JSON_BOTTLES[@]}"
+          else
+            RB_BOTTLES=(*.bottle*.rb)
+            brew bottle --merge --write "${RB_BOTTLES[@]}"
+          fi
+
+      - name: Commit updated bottle block
+        run: |
+          set -euo pipefail
+          if git diff --quiet Formula/mfc.rb; then
+            echo "No changes to Formula/mfc.rb; skipping commit."
+            exit 0
+          fi
+          git add Formula/mfc.rb
+          git -c user.name="github-actions[bot]" \
+              -c user.email="github-actions[bot]@users.noreply.github.com" \
+              commit -m "mfc: update bottles for ${{ steps.meta.outputs.version }}"
+          git push origin HEAD:main
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: MFC bottles ${{ steps.meta.outputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload bottles to Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          files: |
+            *.bottle.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
