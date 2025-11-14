@@ -169,8 +169,23 @@ jobs:
       - name: Install formula with --build-bottle
         run: |
           set -euo pipefail
-          # Install the tap formula by name, now that the tap is linked
-          brew install --build-bottle mflowcode/mfc/mfc
+
+          echo "Installing mfc with --build-bottle (allowing non-fatal dylib fixup failures)..."
+
+          # Homebrew may exit non-zero due to dylib ID fixup issues in Python wheels,
+          # even though the formula actually installed correctly. Treat that as
+          # non-fatal as long as the formula is present.
+          set +e
+          brew install --build-bottle mflowcode/mfc/mfc 2>&1 | tee /tmp/brew-install.log
+          brew_exit_code=$?
+          set -e
+
+          if brew list mflowcode/mfc/mfc &>/dev/null; then
+            echo "✅ mfc installed successfully (ignoring dylib fixup warnings)"
+          else
+            echo "❌ mfc installation failed; propagating brew exit code"
+            exit $brew_exit_code
+          fi
 
       - name: Build bottle
         run: |
