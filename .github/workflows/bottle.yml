@@ -13,122 +13,11 @@ permissions:
   contents: write
 
 jobs:
-  test-bot:
+  test-and-bottle:
+    name: Test and build bottles per macOS
     strategy:
       matrix:
-        os: [macos-14,macos-15,macos-26]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-
-      - name: Checkout tap
-        uses: actions/checkout@v4
-
-      - name: Set variables
-        id: set_vars
-        run: |
-          echo "root_url=https://github.com/${{ github.repository }}/releases/download/bottles" >> "$GITHUB_OUTPUT"
-
-      - name: Build bottles with test-bot
-        env:
-          HOMEBREW_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          brew test-bot --only-formulae --skip-dependents --skip-online-checks \
-            --root-url="${{ steps.set_vars.outputs.root_url }}" mfc
-
-      - name: Upload bottles as artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: bottles-test-bot-${{ matrix.os }}
-          path: '*.bottle.*'
-          if-no-files-found: ignore
-
-      - name: Cleanup
-        if: always()
-        continue-on-error: true
-        run: |
-          brew uninstall --force mfc || true
-
-  test-run-case:
-    needs: test-bot
-    runs-on: macos-latest
-    steps:
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-
-      - name: Checkout tap
-        uses: actions/checkout@v4
-
-      - name: Install MFC from bottle
-        run: |
-          # Wait a moment for the bottle to be available
-          sleep 5
-          # Install the formula (will use bottle if available)
-          brew install mflowcode/mfc/mfc || brew install --build-from-source mflowcode/mfc/mfc
-
-      - name: Run Sod shock tube test case
-        run: |
-          mkdir -p ~/test_mfc_case
-          cd ~/test_mfc_case
-          cp "$(brew --prefix mfc)/examples/1D_sodshocktube/case.py" .
-          mfc case.py -j 1
-
-      - name: Verify output
-        run: |
-          test -d ~/test_mfc_case/silo_hdf5
-          echo "✅ Test case ran successfully and produced output"
-
-      - name: Cleanup
-        if: always()
-        run: |
-          brew uninstall --force mfc || true
-          rm -rf ~/test_mfc_case
-
-  verify-install:
-    needs: test-run-case
-    runs-on: macos-latest
-    steps:
-      - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
-
-      - name: Checkout tap
-        uses: actions/checkout@v4
-
-      - name: Install MFC
-        run: |
-          brew install mflowcode/mfc/mfc || brew install --build-from-source mflowcode/mfc/mfc
-
-      - name: Verify installation
-        run: |
-          echo "1. Checking binaries..."
-          test -x "$(brew --prefix mfc)/bin/pre_process"
-          test -x "$(brew --prefix mfc)/bin/simulation"
-          test -x "$(brew --prefix mfc)/bin/post_process"
-          test -x "$(brew --prefix mfc)/bin/mfc"
-          echo "2. Checking toolchain..."
-          test -d "$(brew --prefix mfc)/toolchain"
-          echo "3. Checking Python venv..."
-          test -d "$(brew --prefix mfc)/libexec/venv"
-          test -x "$(brew --prefix mfc)/libexec/venv/bin/python"
-          echo "4. Checking examples..."
-          test -d "$(brew --prefix mfc)/examples"
-          echo "5. Testing mfc command..."
-          mfc --help
-          echo "✅ All verification checks passed"
-
-      - name: Cleanup
-        if: always()
-        run: |
-          brew uninstall --force mfc || true
-
-  build-bottle:
-    name: Build bottles (per macOS)
-    needs: verify-install
-    strategy:
-      matrix:
-        os: [macos-14, macos-15, macos-26]   # Add more macOS versions here if needed
+        os: [macos-14, macos-15, macos-26]   # Sonoma, Sequoia, Tahoe (public preview)
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -190,6 +79,39 @@ jobs:
             exit $brew_exit_code
           fi
 
+      - name: Run Sod shock tube test case
+        run: |
+          set -euo pipefail
+          echo "Running a simple test case (1D Sod shock tube) on ${{ matrix.os }}..."
+
+          TESTDIR=$(mktemp -d)
+          cp "$(brew --prefix mfc)/examples/1D_sodshocktube/case.py" "$TESTDIR/"
+
+          cd "$TESTDIR"
+          mfc case.py -j 1
+
+          test -d "$TESTDIR/silo_hdf5"
+          echo "✅ Test case ran successfully and produced output"
+
+      - name: Basic installation verification
+        run: |
+          set -euo pipefail
+          echo "1. Checking binaries..."
+          test -x "$(brew --prefix mfc)/bin/pre_process"
+          test -x "$(brew --prefix mfc)/bin/simulation"
+          test -x "$(brew --prefix mfc)/bin/post_process"
+          test -x "$(brew --prefix mfc)/bin/mfc"
+          echo "2. Checking toolchain..."
+          test -d "$(brew --prefix mfc)/toolchain"
+          echo "3. Checking Python venv..."
+          test -d "$(brew --prefix mfc)/libexec/venv"
+          test -x "$(brew --prefix mfc)/libexec/venv/bin/python"
+          echo "4. Checking examples..."
+          test -d "$(brew --prefix mfc)/examples"
+          echo "5. Testing mfc command..."
+          mfc --help
+          echo "✅ All verification checks passed on ${{ matrix.os }}"
+
       - name: Build bottle
         run: |
           set -euo pipefail
@@ -206,7 +128,7 @@ jobs:
 
   merge-bottles:
     name: Merge bottles and update formula
-    needs: build-bottle
+    needs: test-and-bottle
     runs-on: macos-14
 
     steps:
@@ -253,8 +175,8 @@ jobs:
           set -euo pipefail
           cd bottles
 
-          # Collect all JSON metadata files from all OSes
-          JSON_BOTTLES=(*.bottle*.json)
+          # Collect all JSON metadata files from all OSes (subdirectories)
+          JSON_BOTTLES=(*/*.bottle*.json)
           if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
             echo "No bottle metadata (*.bottle*.json) found; cannot merge bottle into Formula/mfc.rb"
             ls -R
