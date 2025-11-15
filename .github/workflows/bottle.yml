@@ -198,27 +198,30 @@ jobs:
           echo "Merging bottle metadata from:"
           printf '%s\n' "${JSON_BOTTLES[@]}"
           
-          # Remove --write to prevent automatic commit
-          brew bottle --merge "${JSON_BOTTLES[@]}"
+          # Use --write which auto-commits, but capture the current HEAD first
+          BEFORE_SHA=$(git rev-parse HEAD)
+          echo "HEAD before merge: ${BEFORE_SHA}"
+          
+          brew bottle --merge --write "${JSON_BOTTLES[@]}"
+          
+          AFTER_SHA=$(git rev-parse HEAD)
+          echo "HEAD after merge: ${AFTER_SHA}"
+          
+          if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
+            echo "✅ New bottle commit created by brew bottle --write"
+            echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ℹ️  No new commit (bottles unchanged or already present)"
+            echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
+          fi
+        id: merge
 
-      - name: Commit updated bottle block
+      - name: Push bottle updates if changed
+        if: steps.merge.outputs.bottle_updated == 'true'
         run: |
           set -euo pipefail
-          
-          echo "Checking for changes to Formula/mfc.rb..."
-          git diff Formula/mfc.rb
-          
-          if git diff --quiet Formula/mfc.rb; then
-            echo "⚠️  No changes to Formula/mfc.rb after merge!"
-            echo "This likely means the bottle merge failed!"
-            exit 1
-          fi
-          
-          echo "✅ Formula updated with bottle metadata"
-          git add Formula/mfc.rb
-          git -c user.name="github-actions[bot]" \
-              -c user.email="github-actions[bot]@users.noreply.github.com" \
-              commit -m "mfc: update bottles for ${{ steps.meta.outputs.version }}"
+          echo "Pushing bottle update commit..."
+          git log -1 --stat
           git push origin HEAD:main
 
       - name: Create or update GitHub Release
@@ -234,5 +237,7 @@ jobs:
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           files: bottles/*.bottle.*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
