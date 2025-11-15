@@ -170,41 +170,55 @@ jobs:
         with:
           path: bottles
 
+      - name: Flatten bottle directory
+        run: |
+          set -euo pipefail
+          echo "Before flattening:"
+          find bottles -name '*.bottle.*' -type f
+          
+          # Move all bottle files from subdirectories to bottles/ root
+          find bottles -mindepth 2 -name '*.bottle.*' -type f -exec mv {} bottles/ \;
+          
+          echo ""
+          echo "After flattening:"
+          ls -1 bottles/*.bottle.*
+
       - name: Merge bottle metadata into formula
         run: |
           set -euo pipefail
-          cd bottles
-
-          # Collect all JSON metadata files from all OSes (subdirectories)
-          JSON_BOTTLES=(*/*.bottle*.json)
+          
+          # Collect all JSON metadata files (now in bottles/ root)
+          JSON_BOTTLES=(bottles/*.bottle*.json)
           if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
-            echo "No bottle metadata (*.bottle*.json) found; cannot merge bottle into Formula/mfc.rb"
-            ls -R
+            echo "No bottle metadata (*.bottle*.json) found in bottles/"
+            ls -la bottles/
             exit 1
           fi
-
+          
+          echo "Merging bottle metadata from:"
+          printf '%s\n' "${JSON_BOTTLES[@]}"
+          
           brew bottle --merge --write "${JSON_BOTTLES[@]}"
 
       - name: Commit updated bottle block
         run: |
           set -euo pipefail
+          
+          echo "Checking for changes to Formula/mfc.rb..."
+          git diff Formula/mfc.rb
+          
           if git diff --quiet Formula/mfc.rb; then
-            echo "No changes to Formula/mfc.rb; skipping commit."
-            exit 0
+            echo "⚠️  No changes to Formula/mfc.rb; skipping commit."
+            echo "This likely means the bottle merge failed!"
+            exit 1
           fi
+          
+          echo "✅ Formula updated with bottle metadata"
           git add Formula/mfc.rb
           git -c user.name="github-actions[bot]" \
               -c user.email="github-actions[bot]@users.noreply.github.com" \
               commit -m "mfc: update bottles for ${{ steps.meta.outputs.version }}"
           git push origin HEAD:main
-
-      - name: Flatten bottle directory for upload
-        run: |
-          set -euo pipefail
-          # Move all bottle files from subdirectories to bottles/ root
-          find bottles -name '*.bottle.*' -type f -exec mv {} bottles/ \;
-          echo "Bottle files ready for upload:"
-          ls -1 bottles/*.bottle.*
 
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v1
@@ -218,7 +232,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          files: |
-            bottles/*.bottle.*
+          files: bottles/*.bottle.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
