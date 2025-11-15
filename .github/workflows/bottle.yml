@@ -183,6 +183,24 @@ jobs:
           echo "After flattening:"
           ls -1 bottles/*.bottle.*
 
+      - name: Rename bottles for GitHub release
+        run: |
+          set -euo pipefail
+          echo "Renaming bottles (mfc-- → mfc-)..."
+          
+          # Rename mfc--VERSION to mfc-VERSION for all bottle files
+          for file in bottles/mfc--*.bottle.*; do
+            if [[ -f "$file" ]]; then
+              newname=$(echo "$file" | sed 's/mfc--/mfc-/')
+              mv "$file" "$newname"
+              echo "  $file → $newname"
+            fi
+          done
+          
+          echo ""
+          echo "Bottles ready for upload:"
+          ls -1 bottles/*.bottle.*
+
       - name: Merge bottle metadata into formula
         run: |
           set -euo pipefail
