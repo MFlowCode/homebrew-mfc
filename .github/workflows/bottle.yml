@@ -220,8 +220,14 @@ jobs:
         if: steps.merge.outputs.bottle_updated == 'true'
         run: |
           set -euo pipefail
+          
           echo "Pushing bottle update commit..."
           git log -1 --stat
+          
+          # Configure git to use the GitHub token for authentication
+          git config --local --unset-all http.https://github.com/.extraheader || true
+          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
+          
           git push origin HEAD:main
 
       - name: Create or update GitHub Release
