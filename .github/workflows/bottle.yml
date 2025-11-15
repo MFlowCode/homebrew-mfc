@@ -198,6 +198,14 @@ jobs:
               commit -m "mfc: update bottles for ${{ steps.meta.outputs.version }}"
           git push origin HEAD:main
 
+      - name: Flatten bottle directory for upload
+        run: |
+          set -euo pipefail
+          # Move all bottle files from subdirectories to bottles/ root
+          find bottles -name '*.bottle.*' -type f -exec mv {} bottles/ \;
+          echo "Bottle files ready for upload:"
+          ls -1 bottles/*.bottle.*
+
       - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v1
         with:
