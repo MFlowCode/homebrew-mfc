@@ -5,8 +5,8 @@ on:
     branches:
       - main
     paths:
-      - 'Formula/**'
-      - '.github/workflows/bottle.yml'
+      - "Formula/**"
+      - ".github/workflows/bottle.yml"
   workflow_dispatch:
 
 permissions:
@@ -16,8 +16,9 @@ jobs:
   test-and-bottle:
     name: Test and build bottles per macOS
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-14, macos-15, macos-26]   # Sonoma, Sequoia, Tahoe (public preview)
+        os: [macos-14, macos-15, macos-26] # Sonoma, Sequoia, Tahoe (public preview)
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -29,25 +30,18 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Determine version and root URL
+      - name: Determine version and root URL (from checked-out formula)
         id: meta
         run: |
           set -euo pipefail
 
-          # Extract URL from the formula (e.g. .../v5.1.0.tar.gz)
-          URL=$(grep -E 'url "https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' Formula/mfc.rb \
-            | sed -E 's/.*url "([^"]+)".*/\1/')
+          FORMULA="Formula/mfc.rb"
 
-          if [[ -z "${URL}" ]]; then
-            echo "Could not extract URL from Formula/mfc.rb" >&2
-            exit 1
-          fi
-
-          # Parse version from the URL (…/vX.Y.Z.tar.gz)
-          VERSION=$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')
+          # Ask Homebrew to parse the formula file, instead of grepping text
+          VERSION="$(brew ruby -e "require 'formula'; f = Formula.from_file('${FORMULA}'); puts f.version")"
 
           if [[ -z "${VERSION}" ]]; then
-            echo "Could not parse version from URL: ${URL}" >&2
+            echo "Could not determine version from ${FORMULA}" >&2
             exit 1
           fi
 
@@ -58,21 +52,22 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
 
-      - name: Install formula with --build-bottle
+          echo "Formula version: ${VERSION}"
+          echo "Release tag:      ${TAG}"
+          echo "Bottle root_url:  ${ROOT_URL}"
+
+      - name: Install formula with --build-bottle (from checked-out file)
         run: |
           set -euo pipefail
 
-          echo "Installing mfc with --build-bottle (allowing non-fatal dylib fixup failures)..."
+          echo "Installing mfc with --build-bottle from ./Formula/mfc.rb (allowing non-fatal dylib fixup failures)..."
 
-          # Homebrew may exit non-zero due to dylib ID fixup issues in Python wheels,
-          # even though the formula actually installed correctly. Treat that as
-          # non-fatal as long as the formula is present.
           set +e
-          brew install --build-bottle mflowcode/mfc/mfc 2>&1 | tee /tmp/brew-install.log
+          brew install --build-bottle ./Formula/mfc.rb 2>&1 | tee /tmp/brew-install.log
           brew_exit_code=$?
           set -e
 
-          if brew list mflowcode/mfc/mfc &>/dev/null; then
+          if brew list mfc &>/dev/null; then
             echo "✅ mfc installed successfully (ignoring dylib fixup warnings)"
           else
             echo "❌ mfc installation failed; propagating brew exit code"
@@ -115,7 +110,6 @@ jobs:
       - name: Build bottle
         run: |
           set -euo pipefail
-          # Build bottle and emit JSON metadata for merge step
           brew bottle --root-url="${{ steps.meta.outputs.root_url }}" --json mfc
           ls -1 *.bottle.*
 
@@ -140,21 +134,16 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
 
-      - name: Determine version and root URL
+      - name: Determine version and root URL (from checked-out formula)
         id: meta
         run: |
           set -euo pipefail
 
-          URL=$(grep -E 'url "https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' Formula/mfc.rb \
-            | sed -E 's/.*url "([^"]+)".*/\1/')
-          if [[ -z "${URL}" ]]; then
-            echo "Could not extract URL from Formula/mfc.rb" >&2
-            exit 1
-          fi
+          FORMULA="Formula/mfc.rb"
+          VERSION="$(brew ruby -e "require 'formula'; f = Formula.from_file('${FORMULA}'); puts f.version")"
 
-          VERSION=$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')
           if [[ -z "${VERSION}" ]]; then
-            echo "Could not parse version from URL: ${URL}" >&2
+            echo "Could not determine version from ${FORMULA}" >&2
             exit 1
           fi
 
@@ -175,10 +164,9 @@ jobs:
           set -euo pipefail
           echo "Before flattening:"
           find bottles -name '*.bottle.*' -type f
-          
-          # Move all bottle files from subdirectories to bottles/ root
+
           find bottles -mindepth 2 -name '*.bottle.*' -type f -exec mv {} bottles/ \;
-          
+
           echo ""
           echo "After flattening:"
           ls -1 bottles/*.bottle.*
@@ -187,8 +175,7 @@ jobs:
         run: |
           set -euo pipefail
           echo "Renaming bottles (mfc-- → mfc-)..."
-          
-          # Rename mfc--VERSION to mfc-VERSION for all bottle files
+
           for file in bottles/mfc--*.bottle.*; do
             if [[ -f "$file" ]]; then
               newname=$(echo "$file" | sed 's/mfc--/mfc-/')
@@ -196,35 +183,34 @@ jobs:
               echo "  $file → $newname"
             fi
           done
-          
+
           echo ""
           echo "Bottles ready for upload:"
           ls -1 bottles/*.bottle.*
 
       - name: Merge bottle metadata into formula
+        id: merge
         run: |
           set -euo pipefail
-          
-          # Collect all JSON metadata files (now in bottles/ root)
+
           JSON_BOTTLES=(bottles/*.bottle*.json)
           if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
             echo "No bottle metadata (*.bottle*.json) found in bottles/"
             ls -la bottles/
             exit 1
           fi
-          
+
           echo "Merging bottle metadata from:"
           printf '%s\n' "${JSON_BOTTLES[@]}"
-          
-          # Use --write which auto-commits, but capture the current HEAD first
+
           BEFORE_SHA=$(git rev-parse HEAD)
           echo "HEAD before merge: ${BEFORE_SHA}"
-          
+
           brew bottle --merge --write "${JSON_BOTTLES[@]}"
-          
+
           AFTER_SHA=$(git rev-parse HEAD)
           echo "HEAD after merge: ${AFTER_SHA}"
-          
+
           if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
             echo "✅ New bottle commit created by brew bottle --write"
             echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
@@ -232,20 +218,18 @@ jobs:
             echo "ℹ️  No new commit (bottles unchanged or already present)"
             echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
           fi
-        id: merge
 
       - name: Push bottle updates if changed
         if: steps.merge.outputs.bottle_updated == 'true'
         run: |
           set -euo pipefail
-          
+
           echo "Pushing bottle update commit..."
           git log -1 --stat
-          
-          # Configure git to use the GitHub token for authentication
+
           git config --local --unset-all http.https://github.com/.extraheader || true
           git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-          
+
           git push origin HEAD:main
 
       - name: Create or update GitHub Release
@@ -263,4 +247,3 @@ jobs:
           files: bottles/*.bottle.*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          
