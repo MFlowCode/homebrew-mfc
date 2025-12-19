@@ -34,27 +34,25 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-
+      
           FORMULA="Formula/mfc.rb"
-
-          # Ask Homebrew to parse the formula file, instead of grepping text
-          VERSION="$(brew ruby -e "require 'formula'; f = Formula.from_file('${FORMULA}'); puts f.version")"
-
+      
+          VERSION="$(
+            brew ruby -e 'require "formulary"; puts Formulary.factory(File.expand_path(ARGV.first)).version' \
+              -- "${FORMULA}"
+          )"
+      
           if [[ -z "${VERSION}" ]]; then
             echo "Could not determine version from ${FORMULA}" >&2
             exit 1
           fi
-
+      
           TAG="mfc-${VERSION}"
           ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-
+      
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
-
-          echo "Formula version: ${VERSION}"
-          echo "Release tag:      ${TAG}"
-          echo "Bottle root_url:  ${ROOT_URL}"
 
       - name: Install formula with --build-bottle (from checked-out file)
         run: |
