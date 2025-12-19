@@ -34,25 +34,39 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-      
+
           FORMULA="Formula/mfc.rb"
-      
-          VERSION="$(
-            brew ruby -e 'require "formulary"; puts Formulary.factory(File.expand_path(ARGV.first)).version' \
-              -- "${FORMULA}"
+
+          # Take the *last* matching URL (guards against accidental duplicates)
+          URL="$(
+            grep -E '^\s*url\s+"https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' "${FORMULA}" \
+              | sed -E 's/^\s*url\s+"([^"]+)".*/\1/' \
+              | tail -n 1
           )"
-      
-          if [[ -z "${VERSION}" ]]; then
-            echo "Could not determine version from ${FORMULA}" >&2
+
+          if [[ -z "${URL}" ]]; then
+            echo "Could not extract release tarball URL from ${FORMULA}" >&2
+            echo "Expected a line like: url \"https://github.com/<org>/<repo>/archive/refs/tags/vX.Y.Z.tar.gz\"" >&2
             exit 1
           fi
-      
+
+          VERSION="$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')"
+          if [[ -z "${VERSION}" ]]; then
+            echo "Could not parse version from URL: ${URL}" >&2
+            exit 1
+          fi
+
           TAG="mfc-${VERSION}"
           ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-      
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
+
+          echo "Formula URL:      ${URL}"
+          echo "Formula version:  ${VERSION}"
+          echo "Release tag:      ${TAG}"
+          echo "Bottle root_url:  ${ROOT_URL}"
 
       - name: Install formula with --build-bottle (from checked-out file)
         run: |
@@ -138,10 +152,21 @@ jobs:
           set -euo pipefail
 
           FORMULA="Formula/mfc.rb"
-          VERSION="$(brew ruby -e "require 'formula'; f = Formula.from_file('${FORMULA}'); puts f.version")"
 
+          URL="$(
+            grep -E '^\s*url\s+"https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' "${FORMULA}" \
+              | sed -E 's/^\s*url\s+"([^"]+)".*/\1/' \
+              | tail -n 1
+          )"
+
+          if [[ -z "${URL}" ]]; then
+            echo "Could not extract release tarball URL from ${FORMULA}" >&2
+            exit 1
+          fi
+
+          VERSION="$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')"
           if [[ -z "${VERSION}" ]]; then
-            echo "Could not determine version from ${FORMULA}" >&2
+            echo "Could not parse version from URL: ${URL}" >&2
             exit 1
           fi
 
