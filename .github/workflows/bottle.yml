@@ -68,17 +68,30 @@ jobs:
           echo "Release tag:      ${TAG}"
           echo "Bottle root_url:  ${ROOT_URL}"
 
-      - name: Install formula with --build-bottle (from checked-out file)
+      - name: Install formula with --build-bottle (from checked-out formula via temp tap)
         run: |
           set -euo pipefail
-
-          echo "Installing mfc with --build-bottle from ./Formula/mfc.rb (allowing non-fatal dylib fixup failures)..."
-
+      
+          echo "Installing mfc with --build-bottle from checked-out Formula/mfc.rb via a temporary local tap..."
+      
+          # brew tap-new needs git identity sometimes
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+          # Create a local tap and copy the formula into Homebrew's tap location
+          brew tap-new mflowcode/local
+          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
+          mkdir -p "${TAP_DIR}/Formula"
+          cp Formula/mfc.rb "${TAP_DIR}/Formula/mfc.rb"
+      
+          # Homebrew may exit non-zero due to dylib fixup issues in Python wheels,
+          # even though the formula actually installed correctly. Treat that as
+          # non-fatal as long as the formula is present.
           set +e
-          brew install --build-bottle ./Formula/mfc.rb 2>&1 | tee /tmp/brew-install.log
+          brew install --build-bottle mflowcode/local/mfc 2>&1 | tee /tmp/brew-install.log
           brew_exit_code=$?
           set -e
-
+      
           if brew list mfc &>/dev/null; then
             echo "✅ mfc installed successfully (ignoring dylib fixup warnings)"
           else
