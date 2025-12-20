@@ -2,8 +2,6 @@ name: Bottle
 
 on:
   push:
-    branches:
-      - main
     paths:
       - "Formula/**"
       - ".github/workflows/bottle.yml"
