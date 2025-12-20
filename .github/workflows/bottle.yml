@@ -46,7 +46,10 @@ jobs:
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
-      
+          
+      - run: |
+          echo "root_url=${{ steps.meta.outputs.root_url }}"
+    
       - name: Install formula with --build-bottle (from checked-out formula via temp tap)
         run: |
           set -euo pipefail
