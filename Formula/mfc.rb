@@ -78,7 +78,12 @@ class Mfc < Formula
     # Now build MFC with pre-configured venv
     # Set VIRTUAL_ENV so mfc.sh uses existing venv instead of creating new one
     ENV["VIRTUAL_ENV"] = venv
-
+    
+    # Also set pretend-version env vars for mfc.sh in case it tries to reinstall toolchain
+    ENV["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MFC"] = version.to_s
+    ENV["SETUPTOOLS_SCM_PRETEND_VERSION_FOR_mfc"] = version.to_s
+    ENV["SETUPTOOLS_SCM_PRETEND_VERSION"] = version.to_s
+    
     # Build MFC using pre-configured venv
     # Must run from buildpath (MFC root directory) where toolchain/ exists
     Dir.chdir(buildpath) do
