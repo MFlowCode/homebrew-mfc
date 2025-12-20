@@ -24,6 +24,11 @@ jobs:
 
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
+        
+      - name: Test tarball download
+        run: |
+          curl -I "https://github.com/MFlowCode/MFC/archive/refs/tags/v5.1.5.tar.gz"
+          curl -L "https://github.com/MFlowCode/MFC/archive/refs/tags/v5.1.5.tar.gz" | shasum -a 256
 
       - name: Determine version and root URL (from checked-out formula)
         id: meta
