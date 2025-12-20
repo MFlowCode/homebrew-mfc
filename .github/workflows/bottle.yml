@@ -218,30 +218,21 @@ jobs:
             ls -la bottles/
             exit 1
           fi
-
+      
           echo "Merging bottle metadata from:"
           printf '%s\n' "${JSON_BOTTLES[@]}"
-
+      
+          BEFORE_SHA="$(git rev-parse HEAD)"
           brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
-
-          # brew bottle --write updates the tapped formula (setup-homebrew’s tap location).
-          # Copy back into the checked-out repo for committing.
-          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-mfc"
-          cp "${TAP_DIR}/Formula/mfc.rb" Formula/mfc.rb
-
-          if git diff --quiet -- Formula/mfc.rb; then
-            echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
-          else
+          AFTER_SHA="$(git rev-parse HEAD)"
+      
+          if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
+            echo "✅ brew bottle --write created commit ${AFTER_SHA}"
             echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ℹ️  No commit created (bottles unchanged or already present)"
+            echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Commit formula update if changed
-        if: steps.merge.outputs.bottle_updated == 'true'
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add Formula/mfc.rb
-          git commit -m "mfc: bottles for v${{ steps.meta.outputs.version }}"
 
       - name: Push bottle updates if changed
         if: steps.merge.outputs.bottle_updated == 'true'
