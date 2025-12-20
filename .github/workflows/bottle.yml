@@ -25,6 +25,13 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@master
         
+      - name: Ensure no conflicting taps provide mfc
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew untap mflowcode/mfc >/dev/null 2>&1 || true
+          brew untap mflowcode/local >/dev/null 2>&1 || true
+    
       - name: Test tarball download
         run: |
           curl -I "https://github.com/MFlowCode/MFC/archive/refs/tags/v5.1.5.tar.gz"
@@ -238,79 +245,82 @@ jobs:
           echo "Bottles ready for upload:"
           ls -1 bottles/*.bottle.*
 
-      - name: Tap this checkout as mflowcode/local (so brew can find mflowcode/local/mfc)
+      - name: Ensure no conflicting taps provide mfc (merge job)
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew untap mflowcode/mfc >/dev/null 2>&1 || true
+          brew untap mflowcode/local >/dev/null 2>&1 || true
+      
+      - name: Create temp tap for merge and copy formula into it
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+      
+          brew tap-new mflowcode/local
+          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
+          mkdir -p "${TAP_DIR}/Formula"
+          cp Formula/mfc.rb "${TAP_DIR}/Formula/mfc.rb"
+      
+          brew info mflowcode/local/mfc
+          
+      - name: Merge bottle metadata into formula
+        id: merge
         shell: bash
         run: |
           set -euo pipefail
       
-          # Ensure a clean state if a previous run left the tap installed
-          brew untap mflowcode/local >/dev/null 2>&1 || true
+          JSON_BOTTLES=(bottles/*.bottle*.json)
+          if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
+            echo "No bottle metadata (*.bottle*.json) found in bottles/"
+            ls -la bottles/
+            exit 1
+          fi
       
-          # Tap the checked-out repository as a local tap
-          brew tap mflowcode/local "${GITHUB_WORKSPACE}"
+          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
       
-          # Verify the tap exists (brew tap with no args lists taps)
-          brew tap | grep -q '^mflowcode/local$'
+          echo "Merging bottle metadata from:"
+          printf '%s\n' "${JSON_BOTTLES[@]}"
       
-          # Verify the formula resolves
-          brew info mflowcode/local/mfc
-          
-            - name: Merge bottle metadata into formula
-              id: merge
-              run: |
-                set -euo pipefail
+          brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
       
-                JSON_BOTTLES=(bottles/*.bottle*.json)
-                if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
-                  echo "No bottle metadata (*.bottle*.json) found in bottles/"
-                  ls -la bottles/
-                  exit 1
-                fi
+          # Copy the updated formula back into this checkout so git add works here
+          cp "${TAP_DIR}/Formula/mfc.rb" Formula/mfc.rb
       
-                echo "Merging bottle metadata from:"
-                printf '%s\n' "${JSON_BOTTLES[@]}"
-      
-                BEFORE_SHA=$(git rev-parse HEAD)
-                echo "HEAD before merge: ${BEFORE_SHA}"
-      
-                brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
-      
-                AFTER_SHA=$(git rev-parse HEAD)
-                echo "HEAD after merge: ${AFTER_SHA}"
-      
-                if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
-                  echo "✅ New bottle commit created by brew bottle --write"
-                  echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
-                else
-                  echo "ℹ️  No new commit (bottles unchanged or already present)"
-                  echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
-                fi
+          if git diff --quiet -- Formula/mfc.rb; then
+            echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
+          fi
 
-      - name: Push bottle updates if changed
+      - name: Commit formula update if changed
         if: steps.merge.outputs.bottle_updated == 'true'
+        shell: bash
         run: |
           set -euo pipefail
-
-          echo "Pushing bottle update commit..."
-          git log -1 --stat
-
-          git config --local --unset-all http.https://github.com/.extraheader || true
-          git remote set-url origin https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git
-
+          git add Formula/mfc.rb
+          if git diff --cached --quiet; then
+            echo "No changes staged; skipping commit."
+            exit 0
+          fi
+          git commit -m "mfc: bottles for v${{ steps.meta.outputs.version }}"
+      
+      - name: Push bottle updates if changed
+        if: steps.merge.outputs.bottle_updated == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
           git push origin HEAD:main
 
-      - name: Create or update GitHub Release
+      - name: Create/update release and upload bottles
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: MFC bottles ${{ steps.meta.outputs.version }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload bottles to Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.meta.outputs.tag }}
           files: bottles/*.bottle.*
+          fail_on_unmatched_files: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
