@@ -198,17 +198,11 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
 
-      - name: Create temp tap with checked-out formula (merge job)
+      - name: Configure git for bottle merge
         run: |
           set -euo pipefail
-
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-
-          brew tap-new mflowcode/local
-          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
-          mkdir -p "${TAP_DIR}/Formula"
-          cp Formula/mfc.rb "${TAP_DIR}/Formula/mfc.rb"
 
       - name: Download all bottle artifacts
         uses: actions/download-artifact@v4
@@ -262,7 +256,7 @@ jobs:
           BEFORE_SHA=$(git rev-parse HEAD)
           echo "HEAD before merge: ${BEFORE_SHA}"
 
-          brew bottle --merge --write "${JSON_BOTTLES[@]}"
+          brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
 
           AFTER_SHA=$(git rev-parse HEAD)
           echo "HEAD after merge: ${AFTER_SHA}"
