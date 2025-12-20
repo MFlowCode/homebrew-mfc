@@ -29,8 +29,11 @@ class Mfc < Formula
     # Create Python virtual environment inside libexec (inside Cellar for proper bottling)
     venv = libexec/"venv"
     system Formula["python@3.12"].opt_bin/"python3.12", "-m", "venv", venv
-    system venv/"bin/pip", "install", "--upgrade", "pip", "setuptools", "wheel", "setuptools-scm", "hatchling", "hatch-vcs"
-
+    system venv/"bin/pip", "install", "--upgrade",
+           "pip", "setuptools", "wheel",
+           "setuptools-scm",
+           "hatchling", "hatch-vcs",
+           "editables"
     # Install Cantera from PyPI using pre-built wheel (complex package, doesn't need custom flags)
     # Cantera has CMake compatibility issues when building from source with newer CMake versions
     # Match the version constraint from toolchain/pyproject.toml
