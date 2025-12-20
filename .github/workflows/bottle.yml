@@ -242,40 +242,49 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew tap mflowcode/local "${GITHUB_WORKSPACE}" --force-auto-update || true
-          brew tap --list | grep -q '^mflowcode/local$'
+      
+          # Ensure a clean state if a previous run left the tap installed
+          brew untap mflowcode/local >/dev/null 2>&1 || true
+      
+          # Tap the checked-out repository as a local tap
+          brew tap mflowcode/local "${GITHUB_WORKSPACE}"
+      
+          # Verify the tap exists (brew tap with no args lists taps)
+          brew tap | grep -q '^mflowcode/local$'
+      
+          # Verify the formula resolves
           brew info mflowcode/local/mfc
-    
-      - name: Merge bottle metadata into formula
-        id: merge
-        run: |
-          set -euo pipefail
-
-          JSON_BOTTLES=(bottles/*.bottle*.json)
-          if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
-            echo "No bottle metadata (*.bottle*.json) found in bottles/"
-            ls -la bottles/
-            exit 1
-          fi
-
-          echo "Merging bottle metadata from:"
-          printf '%s\n' "${JSON_BOTTLES[@]}"
-
-          BEFORE_SHA=$(git rev-parse HEAD)
-          echo "HEAD before merge: ${BEFORE_SHA}"
-
-          brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
-
-          AFTER_SHA=$(git rev-parse HEAD)
-          echo "HEAD after merge: ${AFTER_SHA}"
-
-          if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
-            echo "✅ New bottle commit created by brew bottle --write"
-            echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "ℹ️  No new commit (bottles unchanged or already present)"
-            echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
-          fi
+          
+            - name: Merge bottle metadata into formula
+              id: merge
+              run: |
+                set -euo pipefail
+      
+                JSON_BOTTLES=(bottles/*.bottle*.json)
+                if [[ ! -e "${JSON_BOTTLES[0]}" ]]; then
+                  echo "No bottle metadata (*.bottle*.json) found in bottles/"
+                  ls -la bottles/
+                  exit 1
+                fi
+      
+                echo "Merging bottle metadata from:"
+                printf '%s\n' "${JSON_BOTTLES[@]}"
+      
+                BEFORE_SHA=$(git rev-parse HEAD)
+                echo "HEAD before merge: ${BEFORE_SHA}"
+      
+                brew bottle --merge --write --root-url="${{ steps.meta.outputs.root_url }}" "${JSON_BOTTLES[@]}"
+      
+                AFTER_SHA=$(git rev-parse HEAD)
+                echo "HEAD after merge: ${AFTER_SHA}"
+      
+                if [[ "${BEFORE_SHA}" != "${AFTER_SHA}" ]]; then
+                  echo "✅ New bottle commit created by brew bottle --write"
+                  echo "bottle_updated=true" >> "$GITHUB_OUTPUT"
+                else
+                  echo "ℹ️  No new commit (bottles unchanged or already present)"
+                  echo "bottle_updated=false" >> "$GITHUB_OUTPUT"
+                fi
 
       - name: Push bottle updates if changed
         if: steps.merge.outputs.bottle_updated == 'true'
