@@ -238,6 +238,14 @@ jobs:
           echo "Bottles ready for upload:"
           ls -1 bottles/*.bottle.*
 
+      - name: Tap this checkout as mflowcode/local (so brew can find mflowcode/local/mfc)
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew tap mflowcode/local "${GITHUB_WORKSPACE}" --force-auto-update || true
+          brew tap --list | grep -q '^mflowcode/local$'
+          brew info mflowcode/local/mfc
+    
       - name: Merge bottle metadata into formula
         id: merge
         run: |
