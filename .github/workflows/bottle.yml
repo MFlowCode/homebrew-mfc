@@ -2,9 +2,6 @@ name: Bottle
 
 on:
   push:
-    paths:
-      - "Formula/**"
-      - ".github/workflows/bottle.yml"
   workflow_dispatch:
 
 permissions:
@@ -33,48 +30,67 @@ jobs:
         run: |
           set -euo pipefail
           FORMULA="Formula/mfc.rb"
-      
+
           URL="$(
             grep -Eo 'https://github.com/[^"]+/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' "${FORMULA}" \
               | tail -n 1
           )"
-      
+
+          if [[ -z "${URL}" ]]; then
+            echo "Could not extract release tarball URL from ${FORMULA}" >&2
+            exit 1
+          fi
+
           VERSION="$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')"
+          if [[ -z "${VERSION}" ]]; then
+            echo "Could not parse version from URL: ${URL}" >&2
+            exit 1
+          fi
+
           TAG="mfc-${VERSION}"
           ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-      
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
-          
-      - run: |
-          echo "root_url=${{ steps.meta.outputs.root_url }}"
-    
-      - name: Install formula with --build-bottle (from checked-out formula via temp tap)
+
+          echo "Formula URL:      ${URL}"
+          echo "Formula version:  ${VERSION}"
+          echo "Release tag:      ${TAG}"
+          echo "Bottle root_url:  ${ROOT_URL}"
+
+      - name: Create temp tap with checked-out formula
         run: |
           set -euo pipefail
-      
-          echo "Installing mfc with --build-bottle from checked-out Formula/mfc.rb via a temporary local tap..."
-      
+
           # brew tap-new needs git identity sometimes
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git config --global user.name "github-actions[bot]"
-      
+
           # Create a local tap and copy the formula into Homebrew's tap location
           brew tap-new mflowcode/local
           TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
           mkdir -p "${TAP_DIR}/Formula"
           cp Formula/mfc.rb "${TAP_DIR}/Formula/mfc.rb"
-      
-          # Homebrew may exit non-zero due to dylib fixup issues in Python wheels,
+
+          echo "Temp tap formula:"
+          ls -la "${TAP_DIR}/Formula/mfc.rb"
+
+      - name: Install formula with --build-bottle (temp tap)
+        run: |
+          set -euo pipefail
+
+          echo "Installing mfc with --build-bottle (allowing non-fatal dylib fixup failures)..."
+
+          # Homebrew may exit non-zero due to dylib ID fixup issues in Python wheels,
           # even though the formula actually installed correctly. Treat that as
           # non-fatal as long as the formula is present.
           set +e
           brew install --build-bottle mflowcode/local/mfc 2>&1 | tee /tmp/brew-install.log
           brew_exit_code=$?
           set -e
-      
-          if brew list mfc &>/dev/null; then
+
+          if brew list mflowcode/local/mfc &>/dev/null; then
             echo "✅ mfc installed successfully (ignoring dylib fixup warnings)"
           else
             echo "❌ mfc installation failed; propagating brew exit code"
@@ -87,7 +103,7 @@ jobs:
           echo "Running a simple test case (1D Sod shock tube) on ${{ matrix.os }}..."
 
           TESTDIR=$(mktemp -d)
-          cp "$(brew --prefix mfc)/examples/1D_sodshocktube/case.py" "$TESTDIR/"
+          cp "$(brew --prefix mflowcode/local/mfc)/examples/1D_sodshocktube/case.py" "$TESTDIR/"
 
           cd "$TESTDIR"
           mfc case.py -j 1
@@ -98,26 +114,33 @@ jobs:
       - name: Basic installation verification
         run: |
           set -euo pipefail
+          PREFIX="$(brew --prefix mflowcode/local/mfc)"
+
           echo "1. Checking binaries..."
-          test -x "$(brew --prefix mfc)/bin/pre_process"
-          test -x "$(brew --prefix mfc)/bin/simulation"
-          test -x "$(brew --prefix mfc)/bin/post_process"
-          test -x "$(brew --prefix mfc)/bin/mfc"
+          test -x "${PREFIX}/bin/pre_process"
+          test -x "${PREFIX}/bin/simulation"
+          test -x "${PREFIX}/bin/post_process"
+          test -x "${PREFIX}/bin/mfc"
+
           echo "2. Checking toolchain..."
-          test -d "$(brew --prefix mfc)/toolchain"
+          test -d "${PREFIX}/toolchain"
+
           echo "3. Checking Python venv..."
-          test -d "$(brew --prefix mfc)/libexec/venv"
-          test -x "$(brew --prefix mfc)/libexec/venv/bin/python"
+          test -d "${PREFIX}/libexec/venv"
+          test -x "${PREFIX}/libexec/venv/bin/python"
+
           echo "4. Checking examples..."
-          test -d "$(brew --prefix mfc)/examples"
+          test -d "${PREFIX}/examples"
+
           echo "5. Testing mfc command..."
           mfc --help
+
           echo "✅ All verification checks passed on ${{ matrix.os }}"
 
-      - name: Build bottle
+      - name: Build bottle (temp tap formula)
         run: |
           set -euo pipefail
-          brew bottle --root-url="${{ steps.meta.outputs.root_url }}" --json mfc
+          brew bottle --root-url="${{ steps.meta.outputs.root_url }}" --json mflowcode/local/mfc
           ls -1 *.bottle.*
 
       - name: Upload bottle artifacts
@@ -145,32 +168,42 @@ jobs:
         id: meta
         run: |
           set -euo pipefail
-      
           FORMULA="Formula/mfc.rb"
-      
+
           URL="$(
-            grep -E '^\s*url\s+"https://github.com/.*/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz"' "${FORMULA}" \
-              | sed -E 's/^\s*url\s+"([^"]+)".*/\1/' \
+            grep -Eo 'https://github.com/[^"]+/archive/refs/tags/v[0-9]+\.[0-9]+\.[0-9]+\.tar\.gz' "${FORMULA}" \
               | tail -n 1
           )"
-      
+
           if [[ -z "${URL}" ]]; then
             echo "Could not extract release tarball URL from ${FORMULA}" >&2
             exit 1
           fi
-      
+
           VERSION="$(echo "${URL}" | sed -E 's/.*v([0-9]+\.[0-9]+\.[0-9]+)\.tar\.gz/\1/')"
           if [[ -z "${VERSION}" ]]; then
             echo "Could not parse version from URL: ${URL}" >&2
             exit 1
           fi
-      
+
           TAG="mfc-${VERSION}"
           ROOT_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
-      
+
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "root_url=${ROOT_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Create temp tap with checked-out formula (merge job)
+        run: |
+          set -euo pipefail
+
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+          brew tap-new mflowcode/local
+          TAP_DIR="$(brew --repository)/Library/Taps/mflowcode/homebrew-local"
+          mkdir -p "${TAP_DIR}/Formula"
+          cp Formula/mfc.rb "${TAP_DIR}/Formula/mfc.rb"
 
       - name: Download all bottle artifacts
         uses: actions/download-artifact@v4
