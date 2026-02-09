@@ -11,14 +11,6 @@ class Mfc < Formula
   license "MIT"
   head "https://github.com/MFlowCode/MFC.git", branch: "master"
 
-  bottle do
-    root_url "https://github.com/MFlowCode/homebrew-mfc/releases/download/mfc-5.2.0"
-    rebuild 1
-    sha256 arm64_tahoe:   "2c95b9392127fdb1ffa6751efb56df52b3597d08316c99ca606003981e6b3f5e"
-    sha256 arm64_sequoia: "a5f1628cb89b11f852a9b234ce2250c6b0a7df7b838b815de77d6380c16da4e6"
-    sha256 arm64_sonoma:  "65ed1ee247884c3027954488715e17f80500e583eabf7cdd4b74ef1f7c37e435"
-  end
-
   depends_on "cmake" => :build
   depends_on "gcc" => :build
 
