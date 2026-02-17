@@ -11,7 +11,6 @@ class Mfc < Formula
   license "MIT"
   head "https://github.com/MFlowCode/MFC.git", branch: "master"
 
-
   depends_on "cmake" => :build
   depends_on "gcc" => :build
 
