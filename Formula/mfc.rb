@@ -7,7 +7,7 @@ class Mfc < Formula
   desc "Exascale multiphase/multiphysics compressible flow solver"
   homepage "https://mflowcode.github.io/"
   url "https://github.com/sbryngelson/MFC/archive/refs/tags/v5.2.2.tar.gz"
-  sha256 "b24a75e86a32d4b1c46a8df7f079050eb772ff260427a2ae9b653554c04e4286"
+  sha256 "a864db47db555a7a9bf67d052d37415ae529206655b7259ab4b9d061336e8bc0"
   license "MIT"
   head "https://github.com/MFlowCode/MFC.git", branch: "master"
 
