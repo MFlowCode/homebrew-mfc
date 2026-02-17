@@ -6,18 +6,10 @@
 class Mfc < Formula
   desc "Exascale multiphase/multiphysics compressible flow solver"
   homepage "https://mflowcode.github.io/"
-  url "https://github.com/sbryngelson/MFC/archive/refs/tags/v5.2.2.tar.gz"
-  sha256 "a864db47db555a7a9bf67d052d37415ae529206655b7259ab4b9d061336e8bc0"
+  url "https://github.com/MFlowCode/MFC/archive/refs/tags/v5.2.1.tar.gz"
+  sha256 "39a934b6bee9b258cead58d7899ecbca3d78106d82fa6d195c618bd7db79c501"
   license "MIT"
   head "https://github.com/MFlowCode/MFC.git", branch: "master"
-
-  bottle do
-    root_url "https://github.com/MFlowCode/homebrew-mfc/releases/download/mfc-5.2.2"
-    rebuild 1
-    sha256 arm64_tahoe:   "22bf1b8f977a00adb07d9f32957b6b117da3d6f94133fb9e8ac8998bb24663b7"
-    sha256 arm64_sequoia: "60acb28f24ee38f6a77ca086c694cca5eedf215ebda420eeaba4cb3a004d0b6d"
-    sha256 arm64_sonoma:  "4e56588badd7bcd212a4ee5a115810dd57a77a7e5c6fab6ff1e09930e3d9d3fc"
-  end
 
   depends_on "cmake" => :build
   depends_on "gcc" => :build
