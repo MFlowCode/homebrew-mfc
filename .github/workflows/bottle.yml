@@ -7,6 +7,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   test-and-bottle:
     name: Test and build bottles per macOS
@@ -23,7 +26,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       # IMPORTANT: do NOT untap mflowcode/mfc in this job. setup-homebrew manages it and
       # its post-cleanup expects the tap directory to exist.
@@ -143,7 +146,7 @@ jobs:
           fetch-depth: 0
 
       - name: Set up Homebrew
-        uses: Homebrew/actions/setup-homebrew@master
+        uses: Homebrew/actions/setup-homebrew@main
 
       - name: Determine version and root URL (from checked-out formula)
         id: meta
@@ -240,6 +243,7 @@ jobs:
         run: |
           set -euo pipefail
           git remote set-url origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git pull --rebase origin main
           git push origin HEAD:main
 
       - name: Create/update release and upload bottles
