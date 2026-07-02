@@ -13,10 +13,10 @@ class Mfc < Formula
 
   bottle do
     root_url "https://github.com/MFlowCode/homebrew-mfc/releases/download/mfc-5.5.0"
-    rebuild 1
-    sha256 arm64_tahoe:   "1ce9081459f9e509c5084f863cd9b13c1c5230b0f599ae939da9cbbf5daad25f"
-    sha256 arm64_sequoia: "c6ae87c59606e76c23810fcee165a65f19c6f64d000abcbce08979fbce72c756"
-    sha256 arm64_sonoma:  "ef19b52da711366c3b9380eed2d52c2ca5745ad1bf17d1f088771e591d13d39f"
+    rebuild 2
+    sha256 arm64_tahoe:   "95a62e2d903618355904a5aa9802253412eff8b485be1f53b879d07b8c058e7d"
+    sha256 arm64_sequoia: "ddc5395a7322d875274d6d4b0bd502e107a33a8f22421329cb2138d5f0097c36"
+    sha256 arm64_sonoma:  "217ba43ec872f550709a7889a625a1ad92f7a12903268ce00ea36c1593718118"
   end
 
   depends_on "cmake" => :build
