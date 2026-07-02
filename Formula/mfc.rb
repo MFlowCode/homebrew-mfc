@@ -19,7 +19,6 @@ class Mfc < Formula
     sha256 arm64_sonoma:  "ef19b52da711366c3b9380eed2d52c2ca5745ad1bf17d1f088771e591d13d39f"
   end
 
-
   depends_on "cmake" => :build
   depends_on "gcc" => :build
 
@@ -37,7 +36,7 @@ class Mfc < Formula
   def install
     # Create Python virtual environment inside libexec (inside Cellar for proper bottling)
     venv = libexec/"venv"
-    system Formula["python@3.12"].opt_bin/"python3.12", "-m", "venv", venv
+    system formula_opt_bin("python@3.12")/"python3.12", "-m", "venv", venv
     system venv/"bin/pip", "install", "--upgrade",
            "pip", "setuptools", "wheel",
            "setuptools-scm",
